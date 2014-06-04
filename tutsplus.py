@@ -50,21 +50,23 @@ class Tutsplus:
 			os.makedirs(course_folder)
 		for chapter in course_info["chapters"]:
 			self._down_chapter(chapter, course_folder)
+		self._down_file(course_info["source_file"], "SourceFils.zip", course_folder)
 
 	def _get_course_info(self, course_url):
 		chapters = []
 		source = self._request_content(course_url)
 		soup = BeautifulSoup(source)
 		course_title = soup.select(".course__title")[0].get_text()
+		course_source_file = soup.select(".course__download-link")[0].get("href")
 		self.token = soup.find(attrs={"name": "csrf-token"}).get("content")
 		chapters_dom_list = soup.select(".lesson-index__chapter")
 		for c in chapters_dom_list:
 			lessons = []
-			val = [text for text in c.stripped_strings]
+			val = [text.replace(':','_') for text in c.stripped_strings]
 			chapter_title = "{0} {1}({2})".format(val[0],val[1],val[2])
 			next_sibling = c.nextSibling
 			while next_sibling.name == "h3":
-				txt = [t for t in next_sibling.stripped_strings]
+				txt = [t.replace(':','_') for t in next_sibling.stripped_strings]
 				lesson_title = "{0} {1}({2})".format(txt[0],txt[1],txt[2])
 				lesson_download_link = next_sibling.select(".lesson-index__download-link")[0].get("href")
 				lesson = {"title": lesson_title, "link": lesson_download_link}
@@ -72,7 +74,7 @@ class Tutsplus:
 				next_sibling = next_sibling.nextSibling
 			chapter = {"chapterTitle": chapter_title, "lessons": lessons}
 			chapters.append(chapter)
-		return {"title": course_title, "chapters": chapters}
+		return {"title": course_title, "chapters": chapters, "source_file": course_source_file}
 
 	def _down_chapter(self, chapter, course_folder):
 		chapter_title = chapter["chapterTitle"]

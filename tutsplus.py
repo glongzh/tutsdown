@@ -29,6 +29,8 @@ class Tutsplus:
             return self.get_login_session()
 
     def _load_session(self):
+        if not os.path.exists('session.pkl'):
+            return requests.session()
         with open('session.pkl', 'rb') as f:
             return pickle.load(f)
 

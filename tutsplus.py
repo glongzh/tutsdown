@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
+import pickle
 import config
 import requests
 from bs4 import BeautifulSoup
@@ -10,22 +12,40 @@ from bs4 import BeautifulSoup
 class Tutsplus:
 
     SIGNIN_URL = "https://tutsplus.com/sign_in"
-    SIGNIN_POST_URL = "https://tutsplus.com/users/sessions"
-    LOGIN_SUCCESS_URL = "https://tutsplus.com/"
+    SIGNIN_POST_URL = "https://tutsplus.com/sessions"
+    LOGIN_SUCCESS_URL = "https://tutsplus.com/account/courses"
 
     def __init__(self):
         self.user = config.USER
         self.password = config.PASSWORD
         self.download_path = config.DOWNLOAD_PATH
-        self.s = requests.session()
+        self.s = self.get_session()
 
-        self._login()
+    def get_session(self):
+        s = self._load_session()
+        if self.check_login(s):
+            return s
+        else:
+            return self.get_login_session()
 
-    def _request_content(self, url):
-        return self.s.get(url).content
+    def _load_session(self):
+        with open('session.pkl', 'rb') as f:
+            return pickle.load(f)
 
-    def _login(self):
-        signin_source = self._request_content(self.SIGNIN_URL)
+    def _dump_session(self, session):
+        with open('session.pkl', 'wb') as f:
+            pickle.dump(session, f)
+
+    def check_login(self, session):
+        check = session.get(self.LOGIN_SUCCESS_URL)
+        if check.url == self.LOGIN_SUCCESS_URL:
+            return True
+        else:
+            return False
+
+    def get_login_session(self):
+        s = requests.session()
+        signin_source = s.get(self.SIGNIN_URL).content
         soup = BeautifulSoup(signin_source)
         authenticity_token = soup.find(
             attrs={"name": "authenticity_token"})['value']
@@ -34,15 +54,21 @@ class Tutsplus:
             "session[login]": self.user,
             "session[password]": self.password
         }
-        r = self.s.post(self.SIGNIN_POST_URL, data=data)
-        if r.url == self.LOGIN_SUCCESS_URL:
-            return True
+        r = s.post(self.SIGNIN_POST_URL, data=data)
+        
+        if self.check_login(s):
+            print 'login success'
+            self._dump_session(s)
+            return s
         else:
-            return False
+            sys.exit('Sorry, login failed, I can do nothing...')
+
+    def _request_content(self, url):
+        return self.s.get(url).content
 
     def download_courses(self, course_list):
         for c in course_list:
-            download_course(c)
+            self.download_course(c)
 
     def download_course(self, course_url):
         course_info = self._get_course_info(course_url)
@@ -72,12 +98,18 @@ class Tutsplus:
         for c in chapters_dom_list:
             lessons = []
             val = [text.replace(':', '_') for text in c.stripped_strings]
-            chapter_title = "{0} {1}({2})".format(val[0], val[1], val[2])
+            chapter_title = "{0} {1}({2})".format(
+                val[0], 
+                "".join(i for i in val[1] if i not in '\\/:*?\"<>|'), 
+                val[2])
             next_sibling = c.nextSibling
             while next_sibling.name == "h3":
                 txt = [t.replace(':', '_')
                        for t in next_sibling.stripped_strings]
-                lesson_title = "{0} {1}({2})".format(txt[0], txt[1], txt[2])
+                lesson_title = "{0} {1}({2})".format(
+                    txt[0], 
+                    "".join(i for i in txt[1] if i not in '\\/:*?\"<>|'), 
+                    txt[2])
                 lesson_download_link = next_sibling.select(
                     ".lesson-index__download-link")[0].get("href")
                 lesson = {"title": lesson_title, "link": lesson_download_link}
@@ -126,5 +158,6 @@ class Tutsplus:
 
 
 if __name__ == '__main__':
-    t = Tutsplus()
-    t.download_course("https://courses.tutsplus.com/courses/say-yo-to-yeoman")
+    if len(sys.argv) > 1:
+        t = Tutsplus()
+        t.download_courses(sys.argv[1:])
